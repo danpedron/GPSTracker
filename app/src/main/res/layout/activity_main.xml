@@ -46,7 +46,15 @@
         android:text="Parar Rastreamento"
         android:textSize="16sp"
         android:enabled="false"
-        android:layout_marginBottom="12dp" />
+        android:layout_marginBottom="24dp" />
+
+    <CheckBox
+        android:id="@+id/autoStartCheckbox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Auto-iniciar ao ligar o celular"
+        android:textSize="14sp"
+        android:layout_marginBottom="24dp" />
 
     <Button
         android:id="@+id/syncButton"

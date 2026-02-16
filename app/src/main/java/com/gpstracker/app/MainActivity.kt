@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -24,6 +25,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var stopButton: Button
     private lateinit var syncButton: Button
     private lateinit var clearButton: Button
+    private lateinit var autoStartCheckbox: CheckBox
     
     private lateinit var database: GpsDatabase
     
@@ -44,6 +46,19 @@ class MainActivity : AppCompatActivity() {
         stopButton = findViewById(R.id.stopButton)
         syncButton = findViewById(R.id.syncButton)
         clearButton = findViewById(R.id.clearButton)
+        autoStartCheckbox = findViewById(R.id.autoStartCheckbox)
+        
+        // Configurar checkbox de auto-start
+        autoStartCheckbox.isChecked = BootReceiver.PrefsHelper.isAutoStartEnabled(this)
+        autoStartCheckbox.setOnCheckedChangeListener { _, isChecked ->
+            BootReceiver.PrefsHelper.setAutoStartEnabled(this, isChecked)
+            val message = if (isChecked) {
+                "Auto-iniciar ativado. O rastreamento continuará após reiniciar o celular."
+            } else {
+                "Auto-iniciar desativado."
+            }
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        }
         
         // Configurar botões
         startButton.setOnClickListener { startTracking() }
@@ -76,6 +91,9 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
+        
+        // Adicionar permissão de BOOT
+        permissions.add(Manifest.permission.RECEIVE_BOOT_COMPLETED)
         
         val notGranted = permissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
@@ -111,6 +129,9 @@ class MainActivity : AppCompatActivity() {
             startService(serviceIntent)
         }
         
+        // Salvar que está rastreando (para auto-start)
+        BootReceiver.PrefsHelper.setWasTracking(this, true)
+        
         Toast.makeText(this, "Rastreamento iniciado", Toast.LENGTH_SHORT).show()
         updateUI()
     }
@@ -118,6 +139,9 @@ class MainActivity : AppCompatActivity() {
     private fun stopTracking() {
         val serviceIntent = Intent(this, GpsTrackingService::class.java)
         stopService(serviceIntent)
+        
+        // Salvar que NÃO está rastreando
+        BootReceiver.PrefsHelper.setWasTracking(this, false)
         
         Toast.makeText(this, "Rastreamento parado", Toast.LENGTH_SHORT).show()
         updateUI()
