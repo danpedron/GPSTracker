@@ -53,17 +53,17 @@ class ConfigActivity : AppCompatActivity() {
 
         fun getLocationParams(profile: Int): LocationParams = when (profile) {
             PROFILE_PRECISION -> LocationParams(
-                intervalMs    = 10_000L,
-                minIntervalMs =  5_000L,
-                minDistanceM  =  5f,
-                maxDelayMs    = 15_000L,
+                intervalMs    =  5_000L,   // 5 segundos
+                minIntervalMs =  3_000L,   // 3 segundos mínimo
+                minDistanceM  =  0f,       // registra sempre (sem limite de distância)
+                maxDelayMs    =  5_000L,   // sem batching
                 priority      = com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY
             )
             PROFILE_BALANCED -> LocationParams(
-                intervalMs    =  60_000L,
-                minIntervalMs =  30_000L,
-                minDistanceM  =  20f,
-                maxDelayMs    =  90_000L,
+                intervalMs    =  30_000L,  // 30 segundos
+                minIntervalMs =  15_000L,  // 15 segundos mínimo
+                minDistanceM  =  10f,      // 10 metros
+                maxDelayMs    =  60_000L,
                 priority      = com.google.android.gms.location.Priority.PRIORITY_BALANCED_POWER_ACCURACY
             )
             PROFILE_MAX_ECONOMY -> LocationParams(
@@ -126,7 +126,18 @@ class ConfigActivity : AppCompatActivity() {
             .putInt(KEY_PROFILE, profile)
             .apply()
 
-        Toast.makeText(this, "Configurações salvas!", Toast.LENGTH_SHORT).show()
+        // Se o serviço estiver rodando, reinicia o GPS com os novos parâmetros
+        if (GpsTrackingService.isRunning) {
+            stopService(android.content.Intent(this, GpsTrackingService::class.java))
+            val serviceIntent = android.content.Intent(this, GpsTrackingService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O)
+                startForegroundService(serviceIntent)
+            else
+                startService(serviceIntent)
+            Toast.makeText(this, "Configurações salvas! GPS reiniciado com novo perfil.", Toast.LENGTH_LONG).show()
+        } else {
+            Toast.makeText(this, "Configurações salvas!", Toast.LENGTH_SHORT).show()
+        }
         finish()
     }
 

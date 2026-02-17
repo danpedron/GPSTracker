@@ -33,9 +33,13 @@ class GpsTrackingService : Service() {
     private val watchdogIntervalMs = 5 * 60 * 1000L  // Verifica a cada 5 minutos
     private val maxSilenceMs      = 10 * 60 * 1000L  // Máximo 10 min sem registro
 
-    // Heartbeat: força ponto GPS a cada 3 minutos, independente de distância
+    // Heartbeat: força ponto GPS baseado no perfil ativo
     private val heartbeatHandler = Handler(Looper.getMainLooper())
-    private val heartbeatIntervalMs = 3 * 60 * 1000L // Heartbeat a cada 3 minutos
+    // Usa o dobro do intervalo do perfil como heartbeat (mín 30s, máx 5min)
+    private val heartbeatIntervalMs: Long get() {
+        val p = ConfigActivity.getLocationParams(ConfigActivity.getProfile(this))
+        return (p.intervalMs * 2).coerceIn(30_000L, 5 * 60_000L)
+    }
 
     companion object {
         private const val CHANNEL_ID   = "gps_tracking_channel"
