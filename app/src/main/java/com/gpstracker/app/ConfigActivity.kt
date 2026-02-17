@@ -2,6 +2,7 @@ package com.gpstracker.app
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
@@ -14,6 +15,13 @@ class ConfigActivity : AppCompatActivity() {
     private lateinit var profileDescText: TextView
     private lateinit var batteryChartText: TextView
     private lateinit var saveButton: Button
+
+    // WiFi auto-sync
+    private lateinit var wifiAutoSyncCheckbox: CheckBox
+    private lateinit var wifiNetwork1Edit: EditText
+    private lateinit var wifiNetwork2Edit: EditText
+    private lateinit var wifiNetwork3Edit: EditText
+    private lateinit var wifiDetectButton: Button
 
     companion object {
         const val PREFS_NAME   = "gps_tracker_prefs"
@@ -50,6 +58,35 @@ class ConfigActivity : AppCompatActivity() {
             val maxDelayMs: Long,
             val priority: Int
         )
+
+        // Redes WiFi confiáveis para sincronização automática
+        private const val KEY_TRUSTED_NETWORKS = "trusted_networks"
+        private const val NETWORKS_SEPARATOR    = "||"
+
+        fun getTrustedNetworks(context: Context): List<String> {
+            val raw = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getString(KEY_TRUSTED_NETWORKS, "") ?: ""
+            return if (raw.isEmpty()) emptyList()
+            else raw.split(NETWORKS_SEPARATOR).filter { it.isNotBlank() }
+        }
+
+        fun saveTrustedNetworks(context: Context, networks: List<String>) {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_TRUSTED_NETWORKS, networks.joinToString(NETWORKS_SEPARATOR))
+                .apply()
+        }
+
+        fun getCurrentSsid(context: Context): String? {
+            return try {
+                val wm = context.applicationContext
+                    .getSystemService(Context.WIFI_SERVICE) as WifiManager
+                wm.connectionInfo?.ssid
+                    ?.trim()
+                    ?.removeSurrounding("\"")
+                    ?.takeIf { it.isNotEmpty() && it != "<unknown ssid>" }
+            } catch (e: Exception) { null }
+        }
 
         fun getLocationParams(profile: Int): LocationParams = when (profile) {
             PROFILE_PRECISION -> LocationParams(
@@ -96,7 +133,37 @@ class ConfigActivity : AppCompatActivity() {
         profileGroup    = findViewById(R.id.profileGroup)
         profileDescText = findViewById(R.id.profileDescText)
         batteryChartText = findViewById(R.id.batteryChartText)
-        saveButton      = findViewById(R.id.saveButton)
+        saveButton       = findViewById(R.id.saveButton)
+
+        // WiFi
+        wifiAutoSyncCheckbox = findViewById(R.id.wifiAutoSyncCheckbox)
+        wifiNetwork1Edit     = findViewById(R.id.wifiNetwork1Edit)
+        wifiNetwork2Edit     = findViewById(R.id.wifiNetwork2Edit)
+        wifiNetwork3Edit     = findViewById(R.id.wifiNetwork3Edit)
+        wifiDetectButton     = findViewById(R.id.wifiDetectButton)
+
+        // Carregar redes salvas
+        val saved = getTrustedNetworks(this)
+        if (saved.isNotEmpty()) wifiNetwork1Edit.setText(saved.getOrElse(0) { "" })
+        if (saved.size > 1)     wifiNetwork2Edit.setText(saved.getOrElse(1) { "" })
+        if (saved.size > 2)     wifiNetwork3Edit.setText(saved.getOrElse(2) { "" })
+        wifiAutoSyncCheckbox.isChecked = saved.isNotEmpty()
+
+        // Botão "Detectar WiFi atual"
+        wifiDetectButton.setOnClickListener {
+            val ssid = getCurrentSsid(this)
+            if (ssid != null) {
+                // Preenche o primeiro campo vazio disponível
+                when {
+                    wifiNetwork1Edit.text.isBlank() -> wifiNetwork1Edit.setText(ssid)
+                    wifiNetwork2Edit.text.isBlank() -> wifiNetwork2Edit.setText(ssid)
+                    wifiNetwork3Edit.text.isBlank() -> wifiNetwork3Edit.setText(ssid)
+                    else -> Toast.makeText(this, "Todos os campos estão preenchidos.", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(this, "Nenhuma rede WiFi conectada no momento.", Toast.LENGTH_SHORT).show()
+            }
+        }
 
         // Carregar valores salvos
         deviceIdEdit.setText(getDeviceId(this))
@@ -125,6 +192,18 @@ class ConfigActivity : AppCompatActivity() {
             .putString(KEY_DEVICE_ID, deviceId)
             .putInt(KEY_PROFILE, profile)
             .apply()
+
+        // Salvar redes WiFi
+        if (wifiAutoSyncCheckbox.isChecked) {
+            val networks = listOf(
+                wifiNetwork1Edit.text.toString().trim(),
+                wifiNetwork2Edit.text.toString().trim(),
+                wifiNetwork3Edit.text.toString().trim()
+            ).filter { it.isNotEmpty() }
+            saveTrustedNetworks(this, networks)
+        } else {
+            saveTrustedNetworks(this, emptyList())
+        }
 
         // Se o serviço estiver rodando, reinicia o GPS com os novos parâmetros
         if (GpsTrackingService.isRunning) {
