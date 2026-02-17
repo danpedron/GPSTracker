@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Intent
 import android.location.Location
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
@@ -16,149 +17,245 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class GpsTrackingService : Service() {
-    
+
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
     private lateinit var database: GpsDatabase
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    
+
+    // Watchdog: verifica se GPS continua ativo
+    private val watchdogHandler = Handler(Looper.getMainLooper())
+    private val watchdogIntervalMs = 5 * 60 * 1000L  // Verifica a cada 5 minutos
+    private val maxSilenceMs      = 10 * 60 * 1000L  // Máximo 10 min sem registro
+
+    // Heartbeat: força ponto GPS a cada 3 minutos, independente de distância
+    private val heartbeatHandler = Handler(Looper.getMainLooper())
+    private val heartbeatIntervalMs = 3 * 60 * 1000L // Heartbeat a cada 3 minutos
+
     companion object {
-        private const val CHANNEL_ID = "gps_tracking_channel"
+        private const val CHANNEL_ID   = "gps_tracking_channel"
         private const val NOTIFICATION_ID = 1001
-        var isRunning = false
+        const val ACTION_UPDATE_UI = "com.gpstracker.app.UPDATE_UI"
+
+        var isRunning: Boolean = false
+        var lastLocationTime: Long = 0L   // timestamp do último ponto gravado
+        var lastLocationCount: Int = 0    // contagem atualizada pelo serviço
+        var watchdogResetCount: Int = 0   // quantas vezes o watchdog reiniciou
     }
-    
+
+    // ------------------------------------------------------------------ //
+    //  CICLO DE VIDA                                                       //
+    // ------------------------------------------------------------------ //
+
     override fun onCreate() {
         super.onCreate()
-        
         database = GpsDatabase(this)
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        
-        createLocationCallback()
+
         createNotificationChannel()
-        
-        startForeground(NOTIFICATION_ID, createNotification())
+        createLocationCallback()
+
+        startForeground(NOTIFICATION_ID, buildNotification("Iniciando GPS..."))
         requestLocationUpdates()
-        
+        startHeartbeat()
+        startWatchdog()
+
         isRunning = true
     }
-    
+
     override fun onDestroy() {
         super.onDestroy()
         stopLocationUpdates()
+        watchdogHandler.removeCallbacksAndMessages(null)
+        heartbeatHandler.removeCallbacksAndMessages(null)
         isRunning = false
+        lastLocationTime = 0L
     }
-    
+
     override fun onBind(intent: Intent?): IBinder? = null
-    
+
+    // Se o sistema matar o serviço, ele se reinicia automaticamente
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        return START_STICKY
+    }
+
+    // ------------------------------------------------------------------ //
+    //  NOTIFICAÇÃO                                                         //
+    // ------------------------------------------------------------------ //
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Rastreamento GPS",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Rastreamento de localização em tempo real"
-            }
-            
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            ).apply { description = "Rastreamento de localização em tempo real" }
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
-    
-    private fun createNotification(): Notification {
+
+    private fun buildNotification(statusText: String): Notification {
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
-            this, 
-            0, 
-            intent, 
-            PendingIntent.FLAG_IMMUTABLE
+            this, 0, intent, PendingIntent.FLAG_IMMUTABLE
         )
-        
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("GPS Tracker")
-            .setContentText("Rastreando sua localização...")
+            .setContentText(statusText)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
     }
-    
+
+    private fun updateNotification(statusText: String) {
+        getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID, buildNotification(statusText))
+    }
+
+    // ------------------------------------------------------------------ //
+    //  GPS                                                                 //
+    // ------------------------------------------------------------------ //
+
     private fun createLocationCallback() {
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
                 super.onLocationResult(locationResult)
-                
                 for (location in locationResult.locations) {
                     saveLocation(location)
                 }
             }
         }
     }
-    
+
     private fun requestLocationUpdates() {
-        /* Consumo elevado de bateria (20-25%/hora) */
-        /*
         val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_HIGH_ACCURACY,
-            5000L // Atualização a cada 5 segundos
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+            120000L  // Ideal: 2 minutos
         ).apply {
-            setMinUpdateIntervalMillis(2000L) // Mínimo 2 segundos
-            setMinUpdateDistanceMeters(5f) // Mínimo 5 metros de distância
+            setMinUpdateIntervalMillis(60000L)  // Mínimo: 1 minuto
+            setMinUpdateDistanceMeters(50f)     // Mínimo: 50 metros de movimento
             setWaitForAccurateLocation(false)
-        }.build()
-        */
-
-        /* Consumo médio de bateria: 15-20%/hora) */
-        val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_BALANCED_POWER_ACCURACY,
-            30000L  // 30 segundos (120 pontos/hora)
-        ).apply {
-            setMinUpdateIntervalMillis(15000L)  // 15 seg mínimo
-            setMinUpdateDistanceMeters(20f)     // 20 metros
+            setMaxUpdateDelayMillis(180000L)    // Batch: no máximo 3 minutos
         }.build()
 
-        /* Maior economia de bateria (10-12%/hora) */
-        /*
-        LocationRequest.Builder(
-            Priority.PRIORITY_BALANCED_POWER_ACCURACY,
-            60000L  // 60 segundos (1 minuto)
-        ).apply {
-            setMinUpdateIntervalMillis(30000L)  // 30s
-            setMinUpdateDistanceMeters(50f)     // 50 metros
-        }
-        */
-        
         try {
             fusedLocationClient.requestLocationUpdates(
-                locationRequest,
-                locationCallback,
-                Looper.getMainLooper()
+                locationRequest, locationCallback, Looper.getMainLooper()
             )
         } catch (e: SecurityException) {
             e.printStackTrace()
         }
     }
-    
+
     private fun stopLocationUpdates() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
     }
-    
+
+    private fun restartLocationUpdates() {
+        stopLocationUpdates()
+        requestLocationUpdates()
+        watchdogResetCount++
+    }
+
+    // ------------------------------------------------------------------ //
+    //  HEARTBEAT — grava ponto a cada 3 min mesmo sem movimentação        //
+    // ------------------------------------------------------------------ //
+
+    private val heartbeatRunnable = object : Runnable {
+        override fun run() {
+            forceCurrentLocation()
+            heartbeatHandler.postDelayed(this, heartbeatIntervalMs)
+        }
+    }
+
+    private fun startHeartbeat() {
+        heartbeatHandler.postDelayed(heartbeatRunnable, heartbeatIntervalMs)
+    }
+
+    private fun forceCurrentLocation() {
+        try {
+            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                location?.let {
+                    // Só grava se passou ao menos 60 s do último ponto
+                    if (System.currentTimeMillis() - lastLocationTime >= 60_000L) {
+                        saveLocation(it)
+                    }
+                }
+            }
+        } catch (e: SecurityException) {
+            e.printStackTrace()
+        }
+    }
+
+    // ------------------------------------------------------------------ //
+    //  WATCHDOG — detecta e cura congelamento do GPS                      //
+    // ------------------------------------------------------------------ //
+
+    private val watchdogRunnable = object : Runnable {
+        override fun run() {
+            checkAndHeal()
+            watchdogHandler.postDelayed(this, watchdogIntervalMs)
+        }
+    }
+
+    private fun startWatchdog() {
+        watchdogHandler.postDelayed(watchdogRunnable, watchdogIntervalMs)
+    }
+
+    private fun checkAndHeal() {
+        // Ignora as primeiras verificações enquanto GPS ainda está "esquentando"
+        if (lastLocationTime == 0L) return
+
+        val silenceMs = System.currentTimeMillis() - lastLocationTime
+
+        if (silenceMs > maxSilenceMs) {
+            // GPS congelou → reinicia as atualizações
+            restartLocationUpdates()
+
+            val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+            val lastStr = fmt.format(Date(lastLocationTime))
+            updateNotification("⚠ GPS reiniciado ($watchdogResetCount×). Último: $lastStr")
+
+            // Notifica a MainActivity para atualizar a tela
+            sendBroadcast(Intent(ACTION_UPDATE_UI))
+        }
+    }
+
+    // ------------------------------------------------------------------ //
+    //  SALVAR LOCALIZAÇÃO                                                  //
+    // ------------------------------------------------------------------ //
+
     private fun saveLocation(location: Location) {
         serviceScope.launch {
             val gpsLocation = GpsLocation(
-                latitude = location.latitude,
+                latitude  = location.latitude,
                 longitude = location.longitude,
-                altitude = location.altitude,
-                accuracy = location.accuracy,
-                speed = location.speed,
-                bearing = location.bearing,
+                altitude  = location.altitude,
+                accuracy  = location.accuracy,
+                speed     = location.speed,
+                bearing   = location.bearing,
                 timestamp = location.time
             )
-            
             database.insertLocation(gpsLocation)
+
+            // Atualiza estado compartilhado com a MainActivity
+            lastLocationTime  = location.time
+            lastLocationCount++
+
+            // Atualiza notificação com hora do último ponto
+            val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+            updateNotification(
+                "Último: ${fmt.format(Date(location.time))} | Total: $lastLocationCount"
+            )
+
+            // Dispara broadcast para MainActivity atualizar a tela imediatamente
+            sendBroadcast(Intent(ACTION_UPDATE_UI))
         }
     }
 }

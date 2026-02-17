@@ -1,24 +1,12 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# ── GPS Tracker - ProGuard Rules ──────────────────────────────────────────────
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Manter todas as classes do app (evita quebrar funcionalidades)
+-keep class com.gpstracker.app.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# SSL bypass - manter TrustManager e X509TrustManager
+-keep class javax.net.ssl.** { *; }
+-keep class java.security.** { *; }
+-dontwarn javax.net.ssl.**
 
 # Google Play Services Location
 -keep class com.google.android.gms.** { *; }
@@ -27,6 +15,14 @@
 # Kotlin Coroutines
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
--keepclassmembers class kotlinx.coroutines.** {
-    volatile <fields>;
+-keepclassmembers class kotlinx.coroutines.** { volatile <fields>; }
+-dontwarn kotlinx.coroutines.**
+
+# JSON
+-keepclassmembers class * {
+    @org.json.JSONField *;
 }
+
+# Manter informações de debug para stack traces legíveis
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
