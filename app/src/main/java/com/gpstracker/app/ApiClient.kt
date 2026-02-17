@@ -52,6 +52,7 @@ object ApiClient {
                     put("speed",      location.speed)
                     put("bearing",    location.bearing)
                     put("timestamp",  location.timestamp)
+                    put("battery",    location.battery)
                 }
                 jsonArray.put(obj)
             }

@@ -9,5 +9,6 @@ data class GpsLocation(
     val speed: Float,
     val bearing: Float,
     val timestamp: Long,
+    val battery: Int = -1,    // percentual de bateria (0-100), -1 = não disponível
     val synced: Boolean = false
 )

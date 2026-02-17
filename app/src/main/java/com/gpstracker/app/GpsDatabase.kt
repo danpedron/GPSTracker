@@ -6,130 +6,104 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
 class GpsDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
-    
+
     companion object {
-        private const val DATABASE_NAME = "gps_tracker.db"
-        private const val DATABASE_VERSION = 1
-        
-        private const val TABLE_LOCATIONS = "locations"
-        private const val COLUMN_ID = "id"
-        private const val COLUMN_LATITUDE = "latitude"
-        private const val COLUMN_LONGITUDE = "longitude"
-        private const val COLUMN_ALTITUDE = "altitude"
-        private const val COLUMN_ACCURACY = "accuracy"
-        private const val COLUMN_SPEED = "speed"
-        private const val COLUMN_BEARING = "bearing"
-        private const val COLUMN_TIMESTAMP = "timestamp"
-        private const val COLUMN_SYNCED = "synced"
+        private const val DATABASE_NAME    = "gps_tracker.db"
+        private const val DATABASE_VERSION = 2          // ← bump para trigger onUpgrade
+
+        private const val TABLE_LOCATIONS  = "locations"
+        private const val COL_ID           = "id"
+        private const val COL_LATITUDE     = "latitude"
+        private const val COL_LONGITUDE    = "longitude"
+        private const val COL_ALTITUDE     = "altitude"
+        private const val COL_ACCURACY     = "accuracy"
+        private const val COL_SPEED        = "speed"
+        private const val COL_BEARING      = "bearing"
+        private const val COL_TIMESTAMP    = "timestamp"
+        private const val COL_BATTERY      = "battery"  // ← novo campo
+        private const val COL_SYNCED       = "synced"
     }
-    
+
     override fun onCreate(db: SQLiteDatabase?) {
-        val createTable = """
+        db?.execSQL("""
             CREATE TABLE $TABLE_LOCATIONS (
-                $COLUMN_ID INTEGER PRIMARY KEY AUTOINCREMENT,
-                $COLUMN_LATITUDE REAL NOT NULL,
-                $COLUMN_LONGITUDE REAL NOT NULL,
-                $COLUMN_ALTITUDE REAL NOT NULL,
-                $COLUMN_ACCURACY REAL NOT NULL,
-                $COLUMN_SPEED REAL NOT NULL,
-                $COLUMN_BEARING REAL NOT NULL,
-                $COLUMN_TIMESTAMP INTEGER NOT NULL,
-                $COLUMN_SYNCED INTEGER DEFAULT 0
+                $COL_ID        INTEGER PRIMARY KEY AUTOINCREMENT,
+                $COL_LATITUDE  REAL    NOT NULL,
+                $COL_LONGITUDE REAL    NOT NULL,
+                $COL_ALTITUDE  REAL    NOT NULL,
+                $COL_ACCURACY  REAL    NOT NULL,
+                $COL_SPEED     REAL    NOT NULL,
+                $COL_BEARING   REAL    NOT NULL,
+                $COL_TIMESTAMP INTEGER NOT NULL,
+                $COL_BATTERY   INTEGER DEFAULT -1,
+                $COL_SYNCED    INTEGER DEFAULT 0
             )
-        """.trimIndent()
-        
-        db?.execSQL(createTable)
-        
-        // Criar índice para melhorar performance
-        db?.execSQL("CREATE INDEX idx_timestamp ON $TABLE_LOCATIONS($COLUMN_TIMESTAMP)")
+        """.trimIndent())
+        db?.execSQL("CREATE INDEX idx_timestamp ON $TABLE_LOCATIONS($COL_TIMESTAMP)")
     }
-    
+
+    // Migração da versão 1 → 2: adiciona coluna battery sem perder dados
     override fun onUpgrade(db: SQLiteDatabase?, oldVersion: Int, newVersion: Int) {
-        db?.execSQL("DROP TABLE IF EXISTS $TABLE_LOCATIONS")
-        onCreate(db)
-    }
-    
-    fun insertLocation(location: GpsLocation): Long {
-        val db = writableDatabase
-        
-        val values = ContentValues().apply {
-            put(COLUMN_LATITUDE, location.latitude)
-            put(COLUMN_LONGITUDE, location.longitude)
-            put(COLUMN_ALTITUDE, location.altitude)
-            put(COLUMN_ACCURACY, location.accuracy)
-            put(COLUMN_SPEED, location.speed)
-            put(COLUMN_BEARING, location.bearing)
-            put(COLUMN_TIMESTAMP, location.timestamp)
-            put(COLUMN_SYNCED, if (location.synced) 1 else 0)
+        if (oldVersion < 2) {
+            db?.execSQL("ALTER TABLE $TABLE_LOCATIONS ADD COLUMN $COL_BATTERY INTEGER DEFAULT -1")
         }
-        
-        return db.insert(TABLE_LOCATIONS, null, values)
     }
-    
+
+    fun insertLocation(location: GpsLocation): Long {
+        return writableDatabase.insert(TABLE_LOCATIONS, null, ContentValues().apply {
+            put(COL_LATITUDE,  location.latitude)
+            put(COL_LONGITUDE, location.longitude)
+            put(COL_ALTITUDE,  location.altitude)
+            put(COL_ACCURACY,  location.accuracy)
+            put(COL_SPEED,     location.speed)
+            put(COL_BEARING,   location.bearing)
+            put(COL_TIMESTAMP, location.timestamp)
+            put(COL_BATTERY,   location.battery)
+            put(COL_SYNCED,    if (location.synced) 1 else 0)
+        })
+    }
+
     fun getAllLocations(): List<GpsLocation> {
         val locations = mutableListOf<GpsLocation>()
-        val db = readableDatabase
-        
-        val cursor = db.query(
-            TABLE_LOCATIONS,
-            null,
-            null,
-            null,
-            null,
-            null,
-            "$COLUMN_TIMESTAMP ASC"
-        )
-        
-        cursor.use {
-            while (it.moveToNext()) {
-                locations.add(
-                    GpsLocation(
-                        id = it.getLong(it.getColumnIndexOrThrow(COLUMN_ID)),
-                        latitude = it.getDouble(it.getColumnIndexOrThrow(COLUMN_LATITUDE)),
-                        longitude = it.getDouble(it.getColumnIndexOrThrow(COLUMN_LONGITUDE)),
-                        altitude = it.getDouble(it.getColumnIndexOrThrow(COLUMN_ALTITUDE)),
-                        accuracy = it.getFloat(it.getColumnIndexOrThrow(COLUMN_ACCURACY)),
-                        speed = it.getFloat(it.getColumnIndexOrThrow(COLUMN_SPEED)),
-                        bearing = it.getFloat(it.getColumnIndexOrThrow(COLUMN_BEARING)),
-                        timestamp = it.getLong(it.getColumnIndexOrThrow(COLUMN_TIMESTAMP)),
-                        synced = it.getInt(it.getColumnIndexOrThrow(COLUMN_SYNCED)) == 1
-                    )
-                )
+        readableDatabase.query(
+            TABLE_LOCATIONS, null, null, null, null, null, "$COL_TIMESTAMP ASC"
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                locations.add(GpsLocation(
+                    id        = cursor.getLong  (cursor.getColumnIndexOrThrow(COL_ID)),
+                    latitude  = cursor.getDouble(cursor.getColumnIndexOrThrow(COL_LATITUDE)),
+                    longitude = cursor.getDouble(cursor.getColumnIndexOrThrow(COL_LONGITUDE)),
+                    altitude  = cursor.getDouble(cursor.getColumnIndexOrThrow(COL_ALTITUDE)),
+                    accuracy  = cursor.getFloat (cursor.getColumnIndexOrThrow(COL_ACCURACY)),
+                    speed     = cursor.getFloat (cursor.getColumnIndexOrThrow(COL_SPEED)),
+                    bearing   = cursor.getFloat (cursor.getColumnIndexOrThrow(COL_BEARING)),
+                    timestamp = cursor.getLong  (cursor.getColumnIndexOrThrow(COL_TIMESTAMP)),
+                    battery   = cursor.getInt   (cursor.getColumnIndexOrThrow(COL_BATTERY)),
+                    synced    = cursor.getInt   (cursor.getColumnIndexOrThrow(COL_SYNCED)) == 1
+                ))
             }
         }
-        
         return locations
     }
-    
+
     fun getLocationCount(): Int {
-        val db = readableDatabase
-        val cursor = db.rawQuery("SELECT COUNT(*) FROM $TABLE_LOCATIONS", null)
-        
-        cursor.use {
-            if (it.moveToFirst()) {
-                return it.getInt(0)
-            }
+        readableDatabase.rawQuery("SELECT COUNT(*) FROM $TABLE_LOCATIONS", null).use {
+            if (it.moveToFirst()) return it.getInt(0)
         }
-        
         return 0
     }
-    
+
     fun clearLocations() {
-        val db = writableDatabase
-        db.delete(TABLE_LOCATIONS, null, null)
+        writableDatabase.delete(TABLE_LOCATIONS, null, null)
     }
-    
+
     fun markAsSynced(ids: List<Long>) {
-        val db = writableDatabase
-        
-        val values = ContentValues().apply {
-            put(COLUMN_SYNCED, 1)
-        }
-        
         val placeholders = ids.joinToString(",") { "?" }
-        val whereClause = "$COLUMN_ID IN ($placeholders)"
-        val whereArgs = ids.map { it.toString() }.toTypedArray()
-        
-        db.update(TABLE_LOCATIONS, values, whereClause, whereArgs)
+        writableDatabase.update(
+            TABLE_LOCATIONS,
+            ContentValues().apply { put(COL_SYNCED, 1) },
+            "$COL_ID IN ($placeholders)",
+            ids.map { it.toString() }.toTypedArray()
+        )
     }
 }

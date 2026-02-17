@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.location.Location
 import android.os.Build
 import android.os.Handler
@@ -235,7 +237,15 @@ class GpsTrackingService : Service() {
     //  SALVAR LOCALIZAÇÃO                                                  //
     // ------------------------------------------------------------------ //
 
+    private fun getBatteryLevel(): Int {
+        val intent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        return if (level >= 0 && scale > 0) (level * 100 / scale) else -1
+    }
+
     private fun saveLocation(location: Location) {
+        val battery = getBatteryLevel()   // lê antes de entrar na coroutine
         serviceScope.launch {
             val gpsLocation = GpsLocation(
                 latitude  = location.latitude,
@@ -244,7 +254,8 @@ class GpsTrackingService : Service() {
                 accuracy  = location.accuracy,
                 speed     = location.speed,
                 bearing   = location.bearing,
-                timestamp = location.time
+                timestamp = location.time,
+                battery   = battery
             )
             database.insertLocation(gpsLocation)
 
