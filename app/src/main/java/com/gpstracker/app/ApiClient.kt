@@ -1,5 +1,6 @@
 package com.gpstracker.app
 
+import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -33,23 +34,26 @@ object ApiClient {
         HttpsURLConnection.setDefaultHostnameVerifier { _, _ -> true }
     }
 
-    fun syncLocations(locations: List<GpsLocation>): Boolean {
+    fun syncLocations(context: Context, locations: List<GpsLocation>): Boolean {
         try {
-            // Aplica bypass de SSL antes de abrir a conexão
             disableSSLVerification()
+
+            // Pega o device_id configurado pelo usuário
+            val deviceId = ConfigActivity.getDeviceId(context)
 
             val jsonArray = JSONArray()
             for (location in locations) {
-                val jsonObject = JSONObject().apply {
-                    put("latitude",  location.latitude)
-                    put("longitude", location.longitude)
-                    put("altitude",  location.altitude)
-                    put("accuracy",  location.accuracy)
-                    put("speed",     location.speed)
-                    put("bearing",   location.bearing)
-                    put("timestamp", location.timestamp)
+                val obj = JSONObject().apply {
+                    put("device_id",  deviceId)
+                    put("latitude",   location.latitude)
+                    put("longitude",  location.longitude)
+                    put("altitude",   location.altitude)
+                    put("accuracy",   location.accuracy)
+                    put("speed",      location.speed)
+                    put("bearing",    location.bearing)
+                    put("timestamp",  location.timestamp)
                 }
-                jsonArray.put(jsonObject)
+                jsonArray.put(obj)
             }
 
             val url        = URL(API_URL)
@@ -57,7 +61,7 @@ object ApiClient {
             connection.apply {
                 requestMethod = "POST"
                 setRequestProperty("Content-Type", "application/json")
-                doOutput      = true
+                doOutput       = true
                 connectTimeout = 15000
                 readTimeout    = 15000
             }
@@ -67,13 +71,10 @@ object ApiClient {
                 writer.flush()
             }
 
-            val responseCode = connection.responseCode
-
-            if (responseCode == HttpURLConnection.HTTP_OK) {
+            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                 val response = BufferedReader(InputStreamReader(connection.inputStream))
                     .use { it.readText() }
-                val jsonResponse = JSONObject(response)
-                return jsonResponse.optBoolean("success", false)
+                return JSONObject(response).optBoolean("success", false)
             }
 
             connection.disconnect()

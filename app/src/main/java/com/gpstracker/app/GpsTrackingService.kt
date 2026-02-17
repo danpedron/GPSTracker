@@ -134,14 +134,14 @@ class GpsTrackingService : Service() {
     }
 
     private fun requestLocationUpdates() {
-        val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_BALANCED_POWER_ACCURACY,
-            120000L  // Ideal: 2 minutos
-        ).apply {
-            setMinUpdateIntervalMillis(60000L)  // Mínimo: 1 minuto
-            setMinUpdateDistanceMeters(50f)     // Mínimo: 50 metros de movimento
+        // Lê o perfil escolhido pelo usuário nas Configurações
+        val p = ConfigActivity.getLocationParams(ConfigActivity.getProfile(this))
+
+        val locationRequest = LocationRequest.Builder(p.priority, p.intervalMs).apply {
+            setMinUpdateIntervalMillis(p.minIntervalMs)
+            setMinUpdateDistanceMeters(p.minDistanceM)
             setWaitForAccurateLocation(false)
-            setMaxUpdateDelayMillis(180000L)    // Batch: no máximo 3 minutos
+            setMaxUpdateDelayMillis(p.maxDelayMs)
         }.build()
 
         try {

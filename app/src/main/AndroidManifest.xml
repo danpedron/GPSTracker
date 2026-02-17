@@ -37,6 +37,11 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
+        <activity
+            android:name=".ConfigActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"

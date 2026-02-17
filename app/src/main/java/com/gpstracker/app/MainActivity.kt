@@ -10,6 +10,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.TextView
@@ -186,7 +188,7 @@ class MainActivity : AppCompatActivity() {
 
             Toast.makeText(this@MainActivity, "Sincronizando ${locations.size} pontos...", Toast.LENGTH_SHORT).show()
 
-            val success = withContext(Dispatchers.IO) { ApiClient.syncLocations(locations) }
+            val success = withContext(Dispatchers.IO) { ApiClient.syncLocations(this@MainActivity, locations) }
 
             if (success) {
                 withContext(Dispatchers.IO) { database.clearLocations() }
@@ -210,6 +212,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ------------------------------------------------------------------ //
+    //  MENU (ícone de configurações na toolbar)                           //
+    // ------------------------------------------------------------------ //
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menu.add(0, 1, 0, "Configurações")
+            .setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == 1) {
+            startActivity(android.content.Intent(this, ConfigActivity::class.java))
+            return true
+        }
+        return super.onOptionsItemSelected(item)
+    }
+
+        // ------------------------------------------------------------------ //
     //  UI                                                                  //
     // ------------------------------------------------------------------ //
 
