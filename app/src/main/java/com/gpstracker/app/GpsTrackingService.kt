@@ -99,6 +99,8 @@ class GpsTrackingService : Service() {
     }
     
     private fun requestLocationUpdates() {
+        /* Consumo elevado de bateria (20-25%/hora) */
+        /*
         val locationRequest = LocationRequest.Builder(
             Priority.PRIORITY_HIGH_ACCURACY,
             5000L // Atualização a cada 5 segundos
@@ -107,6 +109,27 @@ class GpsTrackingService : Service() {
             setMinUpdateDistanceMeters(5f) // Mínimo 5 metros de distância
             setWaitForAccurateLocation(false)
         }.build()
+        */
+
+        /* Consumo médio de bateria: 15-20%/hora) */
+        val locationRequest = LocationRequest.Builder(
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+            30000L  // 30 segundos (120 pontos/hora)
+        ).apply {
+            setMinUpdateIntervalMillis(15000L)  // 15 seg mínimo
+            setMinUpdateDistanceMeters(20f)     // 20 metros
+        }.build()
+
+        /* Maior economia de bateria (10-12%/hora) */
+        /*
+        LocationRequest.Builder(
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+            60000L  // 60 segundos (1 minuto)
+        ).apply {
+            setMinUpdateIntervalMillis(30000L)  // 30s
+            setMinUpdateDistanceMeters(50f)     // 50 metros
+        }
+        */
         
         try {
             fusedLocationClient.requestLocationUpdates(
