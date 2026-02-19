@@ -28,7 +28,7 @@ class WifiSyncReceiver : BroadcastReceiver() {
 
         // Está em uma rede confiável — sincroniza se houver dados
         CoroutineScope(Dispatchers.IO).launch {
-            val db        = GpsDatabase(context)
+            val db        = GpsDatabase.getInstance(context)
             val locations = db.getAllLocations()
             val attempts  = db.getRecentAttempts(200)
 

@@ -1,32 +1,20 @@
 package com.gpstracker.app
 
 import android.Manifest
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
+import android.app.*
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.location.GnssStatus
 import android.location.Location
 import android.location.LocationManager
-import android.os.BatteryManager
-import android.os.Build
-import android.os.Handler
-import android.os.IBinder
-import android.os.Looper
+import android.os.*
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.util.*
 
 class GpsTrackingService : Service() {
 
@@ -34,49 +22,46 @@ class GpsTrackingService : Service() {
     private lateinit var locationCallback: LocationCallback
     private lateinit var locationManager: LocationManager
     private lateinit var database: GpsDatabase
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // Monitoramento de satélites
     private var satellitesUsed = 0
     private var satellitesVisible = 0
     private var gnssCallback: GnssStatus.Callback? = null
+    private var gnssThread: HandlerThread? = null
 
-    // Watchdog: verifica se GPS continua ativo
     private val watchdogHandler = Handler(Looper.getMainLooper())
-    private val watchdogIntervalMs = 5 * 60 * 1000L
-    private val maxSilenceMs      = 10 * 60 * 1000L
-
-    // Heartbeat: força ponto GPS baseado no perfil ativo
     private val heartbeatHandler = Handler(Looper.getMainLooper())
-    private val heartbeatIntervalMs: Long get() {
-        val p = ConfigActivity.getLocationParams(ConfigActivity.getProfile(this))
-        return (p.intervalMs * 2).coerceIn(30_000L, 5 * 60_000L)
-    }
+
+    private val watchdogIntervalMs = 5 * 60 * 1000L
+    private val maxSilenceMs = 10 * 60 * 1000L
+
+    private var lastUiBroadcastTime = 0L
+    private var lastNotificationUpdate = 0L
 
     companion object {
-        private const val CHANNEL_ID   = "gps_tracking_channel"
+        private const val CHANNEL_ID = "gps_tracking_channel"
         private const val NOTIFICATION_ID = 1001
+        private const val UI_BROADCAST_INTERVAL = 1000L
+        private const val NOTIFICATION_INTERVAL = 60_000L
+
         const val ACTION_UPDATE_UI = "com.gpstracker.app.UPDATE_UI"
 
-        var isRunning: Boolean = false
-        var lastLocationTime: Long = 0L
-        var lastLocationCount: Int = 0
-        var watchdogResetCount: Int = 0
+        var isRunning = false
+        var lastLocationTime = 0L
+        var lastLocationCount = 0
+        var watchdogResetCount = 0
 
-        // Informações de satélites e sinal (visível pela MainActivity)
-        var satellites: Int = 0
-        var satellitesInUse: Int = 0
-        var signalQuality: String = "Aguardando GPS..."
+        var satellites = 0
+        var satellitesInUse = 0
+        var signalQuality = "Aguardando GPS..."
         var lastAccuracy: Float = -1f
     }
 
-    // ------------------------------------------------------------------ //
-    //  CICLO DE VIDA                                                       //
-    // ------------------------------------------------------------------ //
-
     override fun onCreate() {
         super.onCreate()
-        database = GpsDatabase(this)
+
+        database = GpsDatabase.getInstance(this)
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
 
@@ -85,6 +70,7 @@ class GpsTrackingService : Service() {
         startSatelliteMonitoring()
 
         startForeground(NOTIFICATION_ID, buildNotification("Iniciando GPS..."))
+
         requestLocationUpdates()
         startHeartbeat()
         startWatchdog()
@@ -98,19 +84,17 @@ class GpsTrackingService : Service() {
         stopSatelliteMonitoring()
         watchdogHandler.removeCallbacksAndMessages(null)
         heartbeatHandler.removeCallbacksAndMessages(null)
+        serviceScope.cancel()
         isRunning = false
         lastLocationTime = 0L
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        return START_STICKY
-    }
-
-    // ------------------------------------------------------------------ //
-    //  NOTIFICAÇÃO                                                         //
-    // ------------------------------------------------------------------ //
+    // ----------------------------------------------------
+    // NOTIFICAÇÃO
+    // ----------------------------------------------------
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -118,77 +102,107 @@ class GpsTrackingService : Service() {
                 CHANNEL_ID,
                 "Rastreamento GPS",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply { description = "Rastreamento de localização em tempo real" }
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            )
+            getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(channel)
         }
     }
 
-    private fun buildNotification(statusText: String): Notification {
+    private fun buildNotification(status: String): Notification {
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             this, 0, intent, PendingIntent.FLAG_IMMUTABLE
         )
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("GPS Tracker")
-            .setContentText(statusText)
+            .setContentText(status)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
     }
 
-    private fun updateNotification(statusText: String) {
+    private fun updateNotification(status: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastNotificationUpdate < NOTIFICATION_INTERVAL) return
+        lastNotificationUpdate = now
+
         getSystemService(NotificationManager::class.java)
-            .notify(NOTIFICATION_ID, buildNotification(statusText))
+            .notify(NOTIFICATION_ID, buildNotification(status))
     }
 
-    // ------------------------------------------------------------------ //
-    //  MONITORAMENTO DE SATÉLITES                                          //
-    // ------------------------------------------------------------------ //
+    // ----------------------------------------------------
+    // THROTTLED UI BROADCAST
+    // ----------------------------------------------------
+
+    private fun safeBroadcastUI() {
+        val now = System.currentTimeMillis()
+        if (now - lastUiBroadcastTime > UI_BROADCAST_INTERVAL) {
+            lastUiBroadcastTime = now
+            sendBroadcast(Intent(ACTION_UPDATE_UI))
+        }
+    }
+
+    // ----------------------------------------------------
+    // SATÉLITES
+    // ----------------------------------------------------
 
     private fun startSatelliteMonitoring() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) return
+
+            if (ActivityCompat.checkSelfPermission(
+                    this, Manifest.permission.ACCESS_FINE_LOCATION
+                ) != PackageManager.PERMISSION_GRANTED
+            ) return
+
+            gnssThread = HandlerThread("GnssThread")
+            gnssThread!!.start()
 
             gnssCallback = object : GnssStatus.Callback() {
                 override fun onSatelliteStatusChanged(status: GnssStatus) {
                     satellitesVisible = status.satelliteCount
-                    satellitesUsed = (0 until status.satelliteCount).count { status.usedInFix(it) }
+                    satellitesUsed =
+                        (0 until status.satelliteCount).count { status.usedInFix(it) }
 
                     satellites = satellitesVisible
                     satellitesInUse = satellitesUsed
 
-                    // Atualiza qualidade do sinal
                     signalQuality = when {
-                        satellitesUsed == 0  -> "Sem GPS"
-                        satellitesUsed < 4   -> "GPS Fraco (${satellitesUsed} sats)"
-                        satellitesUsed < 8   -> "GPS Bom (${satellitesUsed} sats)"
-                        else                 -> "GPS Excelente (${satellitesUsed} sats)"
+                        satellitesUsed == 0 -> "Sem GPS"
+                        satellitesUsed < 4 -> "GPS Fraco ($satellitesUsed)"
+                        satellitesUsed < 8 -> "GPS Bom ($satellitesUsed)"
+                        else -> "GPS Excelente ($satellitesUsed)"
                     }
 
-                    sendBroadcast(Intent(ACTION_UPDATE_UI))
+                    safeBroadcastUI()
                 }
             }
-            locationManager.registerGnssStatusCallback(gnssCallback!!, Handler(Looper.getMainLooper()))
+
+            locationManager.registerGnssStatusCallback(
+                gnssCallback!!,
+                Handler(gnssThread!!.looper)
+            )
         }
     }
 
     private fun stopSatelliteMonitoring() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            gnssCallback?.let { locationManager.unregisterGnssStatusCallback(it) }
+            gnssCallback?.let {
+                locationManager.unregisterGnssStatusCallback(it)
+            }
+            gnssThread?.quitSafely()
         }
     }
 
-    // ------------------------------------------------------------------ //
-    //  GPS                                                                 //
-    // ------------------------------------------------------------------ //
+    // ----------------------------------------------------
+    // GPS
+    // ----------------------------------------------------
 
     private fun createLocationCallback() {
         locationCallback = object : LocationCallback() {
-            override fun onLocationResult(locationResult: LocationResult) {
-                super.onLocationResult(locationResult)
-                for (location in locationResult.locations) {
+            override fun onLocationResult(result: LocationResult) {
+                for (location in result.locations) {
                     processLocation(location)
                 }
             }
@@ -198,20 +212,16 @@ class GpsTrackingService : Service() {
     private fun requestLocationUpdates() {
         val p = ConfigActivity.getLocationParams(ConfigActivity.getProfile(this))
 
-        val locationRequest = LocationRequest.Builder(p.priority, p.intervalMs).apply {
+        val request = LocationRequest.Builder(p.priority, p.intervalMs).apply {
             setMinUpdateIntervalMillis(p.minIntervalMs)
             setMinUpdateDistanceMeters(p.minDistanceM)
             setWaitForAccurateLocation(false)
             setMaxUpdateDelayMillis(p.maxDelayMs)
         }.build()
 
-        try {
-            fusedLocationClient.requestLocationUpdates(
-                locationRequest, locationCallback, Looper.getMainLooper()
-            )
-        } catch (e: SecurityException) {
-            e.printStackTrace()
-        }
+        fusedLocationClient.requestLocationUpdates(
+            request, locationCallback, Looper.getMainLooper()
+        )
     }
 
     private fun stopLocationUpdates() {
@@ -224,100 +234,86 @@ class GpsTrackingService : Service() {
         watchdogResetCount++
     }
 
-    // ------------------------------------------------------------------ //
-    //  PROCESSAMENTO DE LOCALIZAÇÕES (com filtros relaxados)              //
-    // ------------------------------------------------------------------ //
+    // ----------------------------------------------------
+    // PROCESSAMENTO
+    // ----------------------------------------------------
 
     private fun processLocation(location: Location) {
         val acc = location.accuracy
         lastAccuracy = acc
 
-        // Log da tentativa
-        val attemptStatus: String
-        val attemptReason: String
-
-        when {
-            // Precisão excelente — salva sempre
-            acc < 30f -> {
-                saveLocation(location)
-                attemptStatus = "success"
-                attemptReason = "Precisão excelente (${acc.toInt()}m)"
-            }
-
-            // Precisão boa — salva com aviso
-            acc in 30f..100f -> {
-                saveLocation(location)
-                attemptStatus = "success"
-                attemptReason = "Precisão aceitável (${acc.toInt()}m)"
-            }
-
-            // Precisão ruim — salva só se passou >5min sem nada (emergência)
-            acc > 100f -> {
-                val elapsed = System.currentTimeMillis() - lastLocationTime
-                if (elapsed > 5 * 60_000L) {
-                    saveLocation(location)
-                    attemptStatus = "poor_accuracy"
-                    attemptReason = "Precisão baixa (${acc.toInt()}m), mas >5min sem registro"
-                } else {
-                    attemptStatus = "poor_accuracy"
-                    attemptReason = "Precisão muito baixa (${acc.toInt()}m), descartado"
-                }
-            }
-
-            else -> {
-                attemptStatus = "no_signal"
-                attemptReason = "GPS sem sinal válido"
-            }
-        }
-
-        // Registra tentativa no log
-        serviceScope.launch {
-            database.insertAttempt(GpsAttempt(
-                timestamp  = System.currentTimeMillis(),
-                satellites = satellitesUsed,
-                accuracy   = acc,
-                status     = attemptStatus,
-                reason     = attemptReason
-            ))
+        if (acc < 100f ||
+            System.currentTimeMillis() - lastLocationTime > 5 * 60_000L
+        ) {
+            saveLocation(location)
         }
     }
 
-    // ------------------------------------------------------------------ //
-    //  HEARTBEAT — grava ponto forçado periodicamente                      //
-    // ------------------------------------------------------------------ //
+    private fun saveLocation(location: Location) {
+        serviceScope.launch {
+            val gpsLocation = GpsLocation(
+                latitude = location.latitude,
+                longitude = location.longitude,
+                altitude = location.altitude,
+                accuracy = location.accuracy,
+                speed = location.speed,
+                bearing = location.bearing,
+                timestamp = location.time,
+                battery = getBatteryLevel()
+            )
+
+            database.insertLocation(gpsLocation)
+
+            lastLocationTime = location.time
+            lastLocationCount++
+
+            val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+            updateNotification(
+                "Último: ${fmt.format(Date(location.time))} | Total: $lastLocationCount"
+            )
+
+            safeBroadcastUI()
+        }
+    }
+
+    // ----------------------------------------------------
+    // HEARTBEAT
+    // ----------------------------------------------------
 
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
-            forceCurrentLocation()
-            heartbeatHandler.postDelayed(this, heartbeatIntervalMs)
+            fusedLocationClient.lastLocation.addOnSuccessListener {
+                it?.let { loc ->
+                    if (System.currentTimeMillis() - lastLocationTime >= 60_000L) {
+                        processLocation(loc)
+                    }
+                }
+            }
+            heartbeatHandler.postDelayed(this, 60_000L)
         }
     }
 
     private fun startHeartbeat() {
-        heartbeatHandler.postDelayed(heartbeatRunnable, heartbeatIntervalMs)
+        heartbeatHandler.postDelayed(heartbeatRunnable, 60_000L)
     }
 
-    private fun forceCurrentLocation() {
-        try {
-            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                location?.let {
-                    if (System.currentTimeMillis() - lastLocationTime >= 60_000L) {
-                        processLocation(it)
-                    }
-                }
-            }
-        } catch (e: SecurityException) {
-            e.printStackTrace()
-        }
-    }
-
-    // ------------------------------------------------------------------ //
-    //  WATCHDOG — detecta GPS congelado                                    //
-    // ------------------------------------------------------------------ //
+    // ----------------------------------------------------
+    // WATCHDOG
+    // ----------------------------------------------------
 
     private val watchdogRunnable = object : Runnable {
         override fun run() {
-            checkAndHeal()
+            val silence = System.currentTimeMillis() - lastLocationTime
+
+            if (lastLocationTime > 0 &&
+                silence > maxSilenceMs &&
+                satellitesUsed < 4
+            ) {
+                restartLocationUpdates()
+                updateNotification("⚠ GPS reiniciado ($watchdogResetCount×)")
+                safeBroadcastUI()
+            }
+
             watchdogHandler.postDelayed(this, watchdogIntervalMs)
         }
     }
@@ -326,69 +322,14 @@ class GpsTrackingService : Service() {
         watchdogHandler.postDelayed(watchdogRunnable, watchdogIntervalMs)
     }
 
-    private fun checkAndHeal() {
-        if (lastLocationTime == 0L) return
-
-        val silenceMs = System.currentTimeMillis() - lastLocationTime
-
-        // Se passou muito tempo sem GPS E tem poucos satélites → reinicia
-        if (silenceMs > maxSilenceMs && satellitesUsed < 4) {
-            restartLocationUpdates()
-
-            val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-            val lastStr = fmt.format(Date(lastLocationTime))
-            updateNotification("⚠ GPS reiniciado ($watchdogResetCount×). Último: $lastStr")
-
-            // Log da tentativa de recuperação
-            serviceScope.launch {
-                database.insertAttempt(GpsAttempt(
-                    timestamp  = System.currentTimeMillis(),
-                    satellites = satellitesUsed,
-                    accuracy   = lastAccuracy,
-                    status     = "timeout",
-                    reason     = "Sem registro por ${silenceMs/60_000}min, ${satellitesUsed} sats — GPS reiniciado"
-                ))
-            }
-
-            sendBroadcast(Intent(ACTION_UPDATE_UI))
-        }
-    }
-
-    // ------------------------------------------------------------------ //
-    //  SALVAR LOCALIZAÇÃO                                                  //
-    // ------------------------------------------------------------------ //
+    // ----------------------------------------------------
+    // BATERIA
+    // ----------------------------------------------------
 
     private fun getBatteryLevel(): Int {
         val intent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
         return if (level >= 0 && scale > 0) (level * 100 / scale) else -1
-    }
-
-    private fun saveLocation(location: Location) {
-        val battery = getBatteryLevel()
-        serviceScope.launch {
-            val gpsLocation = GpsLocation(
-                latitude  = location.latitude,
-                longitude = location.longitude,
-                altitude  = location.altitude,
-                accuracy  = location.accuracy,
-                speed     = location.speed,
-                bearing   = location.bearing,
-                timestamp = location.time,
-                battery   = battery
-            )
-            database.insertLocation(gpsLocation)
-
-            lastLocationTime  = location.time
-            lastLocationCount++
-
-            val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-            updateNotification(
-                "Último: ${fmt.format(Date(location.time))} | Total: $lastLocationCount"
-            )
-
-            sendBroadcast(Intent(ACTION_UPDATE_UI))
-        }
     }
 }
