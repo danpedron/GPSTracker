@@ -1,136 +1,143 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="20dp"
-    android:gravity="center_horizontal">
+    android:fillViewport="true">
 
-    <!-- Título -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="GPS Tracker"
-        android:textSize="26sp"
-        android:textStyle="bold"
-        android:layout_marginTop="16dp"
-        android:layout_marginBottom="20dp" />
-
-    <!-- Card de Status -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:background="@android:color/white"
-        android:padding="16dp"
-        android:layout_marginBottom="16dp"
-        android:elevation="4dp">
+        android:padding="20dp"
+        android:gravity="center_horizontal">
 
-        <!-- Status Rastreando/Parado -->
+        <!-- Título -->
         <TextView
-            android:id="@+id/statusText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="○ Parado"
-            android:textSize="20sp"
+            android:text="GPS Tracker"
+            android:textSize="26sp"
             android:textStyle="bold"
-            android:layout_marginBottom="12dp" />
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="20dp" />
 
-        <!-- Contagem de pontos -->
-        <TextView
-            android:id="@+id/countText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Localizações registradas: 0"
-            android:textSize="15sp"
-            android:layout_marginBottom="8dp" />
-
-        <!-- Último ponto registrado -->
-        <TextView
-            android:id="@+id/lastLocationText"
+        <!-- Card de Status -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Último ponto: aguardando primeiro sinal..."
-            android:textSize="13sp"
+            android:orientation="vertical"
+            android:background="@android:color/white"
+            android:padding="16dp"
+            android:layout_marginBottom="16dp"
+            android:elevation="4dp">
+
+            <!-- Status Rastreando/Parado -->
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="○ Parado"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="12dp" />
+
+            <!-- Contagem de pontos -->
+            <TextView
+                android:id="@+id/countText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Localizações registradas: 0"
+                android:textSize="15sp"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Último ponto registrado -->
+            <TextView
+                android:id="@+id/lastLocationText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Último ponto: aguardando..."
+                android:textSize="13sp"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Info do Watchdog -->
+            <TextView
+                android:id="@+id/watchdogText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Watchdog: OK"
+                android:textSize="13sp"
+                android:layout_marginBottom="8dp" />
+
+            <!-- Satélites -->
+            <TextView
+                android:id="@+id/satellitesText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Satélites: 0/0"
+                android:textSize="13sp"
+                android:layout_marginBottom="4dp" />
+
+            <!-- Qualidade do sinal GPS -->
+            <TextView
+                android:id="@+id/signalQualityText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Aguardando GPS..."
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+
+        <!-- Botões de Rastreamento -->
+        <Button
+            android:id="@+id/startButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="▶  Iniciar Rastreamento"
+            android:textSize="16sp"
             android:layout_marginBottom="8dp" />
 
-        <!-- Info do Watchdog -->
-        <TextView
-            android:id="@+id/watchdogText"
-            android:layout_width="wrap_content"
+        <Button
+            android:id="@+id/stopButton"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Watchdog: OK"
-            android:textSize="13sp"
+            android:text="■  Parar Rastreamento"
+            android:textSize="16sp"
+            android:enabled="false"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Auto-start -->
+        <CheckBox
+            android:id="@+id/autoStartCheckbox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Auto-iniciar ao ligar o celular"
+            android:textSize="14sp"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@android:color/darker_gray"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Sincronizar e Limpar -->
+        <Button
+            android:id="@+id/syncButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="↑  Sincronizar Dados"
+            android:textSize="16sp"
             android:layout_marginBottom="8dp" />
 
-        <!-- NOVO: Satélites -->
-        <TextView
-            android:id="@+id/satellitesText"
-            android:layout_width="wrap_content"
+        <Button
+            android:id="@+id/clearButton"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Satélites: 0/0"
-            android:textSize="13sp"
-            android:layout_marginBottom="4dp" />
-
-        <!-- NOVO: Qualidade do sinal GPS -->
-        <TextView
-            android:id="@+id/signalQualityText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Aguardando GPS..."
-            android:textSize="15sp"
-            android:textStyle="bold" />
+            android:text="✕  Limpar Dados Locais"
+            android:textSize="16sp"
+            android:layout_marginBottom="24dp" />
 
     </LinearLayout>
-
-    <!-- Botões de Rastreamento -->
-    <Button
-        android:id="@+id/startButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="▶  Iniciar Rastreamento"
-        android:textSize="16sp"
-        android:layout_marginBottom="8dp" />
-
-    <Button
-        android:id="@+id/stopButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="■  Parar Rastreamento"
-        android:textSize="16sp"
-        android:enabled="false"
-        android:layout_marginBottom="16dp" />
-
-    <!-- Auto-start -->
-    <CheckBox
-        android:id="@+id/autoStartCheckbox"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Auto-iniciar ao ligar o celular"
-        android:textSize="14sp"
-        android:layout_marginBottom="16dp" />
-
-    <!-- Divider -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@android:color/darker_gray"
-        android:layout_marginBottom="16dp" />
-
-    <!-- Sincronizar e Limpar -->
-    <Button
-        android:id="@+id/syncButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="↑  Sincronizar Dados"
-        android:textSize="16sp"
-        android:layout_marginBottom="8dp" />
-
-    <Button
-        android:id="@+id/clearButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="✕  Limpar Dados Locais"
-        android:textSize="16sp" />
-
-</LinearLayout>
+</ScrollView>
