@@ -86,4 +86,53 @@ object ApiClient {
 
         return false
     }
+
+    fun syncAttempts(context: Context, attempts: List<GpsAttempt>): Boolean {
+        try {
+            disableSSLVerification()
+
+            val deviceId = ConfigActivity.getDeviceId(context)
+
+            val jsonArray = JSONArray()
+            for (attempt in attempts) {
+                val obj = JSONObject().apply {
+                    put("device_id",  deviceId)
+                    put("timestamp",  attempt.timestamp)
+                    put("satellites", attempt.satellites)
+                    put("accuracy",   attempt.accuracy)
+                    put("status",     attempt.status)
+                    put("reason",     attempt.reason)
+                }
+                jsonArray.put(obj)
+            }
+
+            val url        = URL("https://tech7.pedron.com.br/api/sync_attempts.php")
+            val connection = url.openConnection() as HttpURLConnection
+            connection.apply {
+                requestMethod = "POST"
+                setRequestProperty("Content-Type", "application/json")
+                doOutput       = true
+                connectTimeout = 15000
+                readTimeout    = 15000
+            }
+
+            OutputStreamWriter(connection.outputStream).use { writer ->
+                writer.write(jsonArray.toString())
+                writer.flush()
+            }
+
+            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                val response = BufferedReader(InputStreamReader(connection.inputStream))
+                    .use { it.readText() }
+                return JSONObject(response).optBoolean("success", false)
+            }
+
+            connection.disconnect()
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        return false
+    }
 }

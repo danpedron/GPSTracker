@@ -1,7 +1,10 @@
 package com.gpstracker.app
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.widget.*
@@ -86,6 +89,14 @@ class ConfigActivity : AppCompatActivity() {
                     ?.removeSurrounding("\"")
                     ?.takeIf { it.isNotEmpty() && it != "<unknown ssid>" }
             } catch (e: Exception) { null }
+        }
+
+        private fun Context.getVersionName(): String {
+            return try {
+                packageManager.getPackageInfo(packageName, 0).versionName
+            } catch (e: PackageManager.NameNotFoundException) {
+                "?.?"
+            }
         }
 
         fun getLocationParams(profile: Int): LocationParams = when (profile) {
@@ -177,6 +188,23 @@ class ConfigActivity : AppCompatActivity() {
         updateDescription(prefs.getInt(KEY_PROFILE, PROFILE_ECONOMY))
 
         saveButton.setOnClickListener { save() }
+
+        // Links clicáveis
+        findViewById<TextView>(R.id.versionText).text = "Versão ${getVersionName()}"
+        
+        findViewById<TextView>(R.id.emailLink).setOnClickListener {
+            val intent = Intent(Intent.ACTION_SENDTO).apply {
+                data = Uri.parse("mailto:danpedron@gmail.com")
+            }
+            startActivity(Intent.createChooser(intent, "Enviar email"))
+        }
+
+        findViewById<TextView>(R.id.whatsappLink).setOnClickListener {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                data = Uri.parse("https://wa.me/5547936182693")
+            }
+            startActivity(intent)
+        }
     }
 
     private fun save() {

@@ -30,18 +30,39 @@ class WifiSyncReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             val db        = GpsDatabase(context)
             val locations = db.getAllLocations()
-            if (locations.isEmpty()) return@launch
+            val attempts  = db.getRecentAttempts(200)
 
-            val success = ApiClient.syncLocations(context, locations)
+            var message = ""
+            var success = false
+
+            // Sincroniza localizações
+            if (locations.isNotEmpty()) {
+                val locSuccess = ApiClient.syncLocations(context, locations)
+                if (locSuccess) {
+                    db.clearLocations()
+                    GpsTrackingService.lastLocationCount = 0
+                    message += "${locations.size} pontos"
+                    success = true
+                }
+            }
+
+            // Sincroniza attempts (logs)
+            if (attempts.isNotEmpty()) {
+                val attSuccess = ApiClient.syncAttempts(context, attempts)
+                if (attSuccess) {
+                    db.clearAttempts()
+                    if (message.isNotEmpty()) message += " + "
+                    message += "${attempts.size} logs"
+                    success = true
+                }
+            }
+
+            // Notificação de sucesso
             if (success) {
-                db.clearLocations()
-                GpsTrackingService.lastLocationCount = 0
-
-                // Notificação de sucesso
                 showNotification(
                     context,
                     "GPS Tracker — Sincronização automática",
-                    "✅ ${locations.size} pontos enviados via WiFi \"$ssid\""
+                    "✅ $message enviados via WiFi \"$ssid\""
                 )
             }
             // Se falhou, não apaga nada — dados ficam seguros para próxima tentativa
