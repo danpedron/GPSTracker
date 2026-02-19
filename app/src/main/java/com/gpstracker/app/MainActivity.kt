@@ -127,23 +127,31 @@ class MainActivity : AppCompatActivity() {
 
     private fun syncData() {
         lifecycleScope.launch {
-            val locations = withContext(Dispatchers.IO) { database.getAllLocations() }
+            syncButton.isEnabled = false
+            try {
+                val locations = withContext(Dispatchers.IO) { database.getAllLocations() }
 
-            if (locations.isEmpty()) {
-                Toast.makeText(this@MainActivity, "Nenhum dado para sincronizar", Toast.LENGTH_SHORT).show()
-                return@launch
+                if (locations.isEmpty()) {
+                    Toast.makeText(this@MainActivity, "Nenhum dado para sincronizar", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                val success = withContext(Dispatchers.IO) {
+                    ApiClient.syncLocations(this@MainActivity, locations)
+                }
+
+                if (success) {
+                    withContext(Dispatchers.IO) { database.clearLocations() }
+                    GpsTrackingService.lastLocationCount = 0
+                    Toast.makeText(this@MainActivity, "Sincronização concluída com sucesso", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@MainActivity, "Falha ao sincronizar dados", Toast.LENGTH_SHORT).show()
+                }
+
+                requestUIUpdate()
+            } finally {
+                syncButton.isEnabled = true
             }
-
-            val success = withContext(Dispatchers.IO) {
-                ApiClient.syncLocations(this@MainActivity, locations)
-            }
-
-            if (success) {
-                withContext(Dispatchers.IO) { database.clearLocations() }
-                GpsTrackingService.lastLocationCount = 0
-            }
-
-            requestUIUpdate()
         }
     }
 
