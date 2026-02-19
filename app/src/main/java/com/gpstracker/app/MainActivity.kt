@@ -31,7 +31,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var statusText: TextView
     private lateinit var lastLocationText: TextView   // NOVO: data/hora último ponto
-    private lateinit var watchdogText: TextView       // NOVO: info do watchdog
+    private lateinit var watchdogText: TextView
+    private lateinit var satellitesText: TextView
+    private lateinit var signalQualityText: TextView       // NOVO: info do watchdog
     private lateinit var countText: TextView
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
