@@ -45,23 +45,41 @@
             android:textSize="15sp"
             android:layout_marginBottom="8dp" />
 
-        <!-- NOVO: Último ponto registrado -->
+        <!-- Último ponto registrado -->
         <TextView
             android:id="@+id/lastLocationText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Último ponto: aguardando primeiro sinal..."
             android:textSize="13sp"
-            android:layout_marginBottom="6dp" />
+            android:layout_marginBottom="8dp" />
 
-        <!-- NOVO: Info do Watchdog -->
+        <!-- Info do Watchdog -->
         <TextView
             android:id="@+id/watchdogText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Watchdog: OK"
-            android:textSize="12sp"
-            android:textColor="@android:color/darker_gray" />
+            android:textSize="13sp"
+            android:layout_marginBottom="8dp" />
+
+        <!-- NOVO: Satélites -->
+        <TextView
+            android:id="@+id/satellitesText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Satélites: 0/0"
+            android:textSize="13sp"
+            android:layout_marginBottom="4dp" />
+
+        <!-- NOVO: Qualidade do sinal GPS -->
+        <TextView
+            android:id="@+id/signalQualityText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Aguardando GPS..."
+            android:textSize="15sp"
+            android:textStyle="bold" />
 
     </LinearLayout>
 
